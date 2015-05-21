@@ -49,7 +49,7 @@ from leap.soledad.common.couch import CouchDatabase, CouchServerState
 from leap.soledad.common.crypto import ENC_SCHEME_KEY
 
 from leap.soledad.client import Soledad
-from leap.soledad.client import target
+from leap.soledad.client import http_target as target
 from leap.soledad.client import auth
 from leap.soledad.client.crypto import decrypt_doc_dict
 
@@ -172,7 +172,7 @@ class MockedSharedDBTest(object):
 
 
 def soledad_sync_target(test, path):
-    return target.SoledadSyncTarget(
+    return target.SoledadHTTPSyncTarget(
         test.getURL(path), crypto=test._soledad._crypto)
 
 

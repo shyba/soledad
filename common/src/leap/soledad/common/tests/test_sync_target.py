@@ -29,7 +29,7 @@ import shutil
 from testscenarios import TestWithScenarios
 from urlparse import urljoin
 
-from leap.soledad.client import target
+from leap.soledad.client import http_target as target
 from leap.soledad.client import crypto
 from leap.soledad.client.sqlcipher import SQLCipherU1DBSync
 from leap.soledad.client.sqlcipher import SQLCipherOptions
@@ -55,7 +55,7 @@ from leap.soledad.common.tests.u1db_tests import test_sync
 # The following tests come from `u1db.tests.test_remote_sync_target`.
 #-----------------------------------------------------------------------------
 
-class TestSoledadSyncTargetBasics(
+class TestSoledadHTTPSyncTargetBasics(
         test_remote_sync_target.TestHTTPSyncTargetBasics):
     """
     Some tests had to be copied to this class so we can instantiate our own
@@ -63,7 +63,7 @@ class TestSoledadSyncTargetBasics(
     """
 
     def test_parse_url(self):
-        remote_target = target.SoledadSyncTarget('http://127.0.0.1:12345/')
+        remote_target = target.SoledadHTTPSyncTarget('http://127.0.0.1:12345/')
         self.assertEqual('http', remote_target._url.scheme)
         self.assertEqual('127.0.0.1', remote_target._url.hostname)
         self.assertEqual(12345, remote_target._url.port)
@@ -78,6 +78,13 @@ class TestSoledadParsingSyncStream(
     target.
     """
 
+    def _create_sync_target(self, crypto=None):
+        crypto = crypto or self._soledad._crypto
+        return target.SoledadHTTPSyncTarget("http://foo/foo",
+                source_replica_uid='replica-uid',
+                creds={'token':{'uuid':'deadbeef', 'token':'token'}},
+                crypto=crypto)
+
     def test_extra_comma(self):
         """
         Test adapted to use encrypted content.
@@ -91,68 +98,66 @@ class TestSoledadParsingSyncStream(
         enc_json = crypto.encrypt_docstr(
             doc.get_json(), doc.doc_id, doc.rev,
             key, secret)
-        tgt = target.SoledadSyncTarget(
-            "http://foo/foo", crypto=self._soledad._crypto)
+        tgt = self._create_sync_target(crypto=self._soledad._crypto)
 
         self.assertRaises(u1db.errors.BrokenSyncStream,
-                          tgt._parse_sync_stream, "[\r\n{},\r\n]", None)
+                          tgt._parse_received_doc_response, "[\r\n{},\r\n]")
         self.assertRaises(u1db.errors.BrokenSyncStream,
-                          tgt._parse_sync_stream,
+                          tgt._parse_received_doc_response,
                           '[\r\n{},\r\n{"id": "i", "rev": "r", '
                           '"content": %s, "gen": 3, "trans_id": "T-sid"}'
-                          ',\r\n]' % json.dumps(enc_json),
-                          lambda doc, gen, trans_id: None)
+                          ',\r\n]' % json.dumps(enc_json))
 
     def test_wrong_start(self):
-        tgt = target.SoledadSyncTarget("http://foo/foo")
+        tgt = self._create_sync_target()
 
         self.assertRaises(u1db.errors.BrokenSyncStream,
-                          tgt._parse_sync_stream, "{}\r\n]", None)
+                          tgt._parse_received_doc_response, "{}\r\n]")
 
         self.assertRaises(u1db.errors.BrokenSyncStream,
-                          tgt._parse_sync_stream, "\r\n{}\r\n]", None)
+                          tgt._parse_received_doc_response, "\r\n{}\r\n]")
 
         self.assertRaises(u1db.errors.BrokenSyncStream,
-                          tgt._parse_sync_stream, "", None)
+                          tgt._parse_received_doc_response, "")
 
     def test_wrong_end(self):
-        tgt = target.SoledadSyncTarget("http://foo/foo")
+        tgt = self._create_sync_target()
 
         self.assertRaises(u1db.errors.BrokenSyncStream,
-                          tgt._parse_sync_stream, "[\r\n{}", None)
+                          tgt._parse_received_doc_response, "[\r\n{}")
 
         self.assertRaises(u1db.errors.BrokenSyncStream,
-                          tgt._parse_sync_stream, "[\r\n", None)
+                          tgt._parse_received_doc_response, "[\r\n")
 
     def test_missing_comma(self):
-        tgt = target.SoledadSyncTarget("http://foo/foo")
+        tgt = self._create_sync_target()
 
         self.assertRaises(u1db.errors.BrokenSyncStream,
-                          tgt._parse_sync_stream,
+                          tgt._parse_received_doc_response,
                           '[\r\n{}\r\n{"id": "i", "rev": "r", '
-                          '"content": "c", "gen": 3}\r\n]', None)
+                          '"content": "c", "gen": 3}\r\n]')
 
     def test_no_entries(self):
-        tgt = target.SoledadSyncTarget("http://foo/foo")
+        tgt = self._create_sync_target()
 
         self.assertRaises(u1db.errors.BrokenSyncStream,
-                          tgt._parse_sync_stream, "[\r\n]", None)
+                          tgt._parse_received_doc_response, "[\r\n]")
 
     def test_error_in_stream(self):
-        tgt = target.SoledadSyncTarget("http://foo/foo")
+        tgt = self._create_sync_target()
 
         self.assertRaises(u1db.errors.Unavailable,
-                          tgt._parse_sync_stream,
+                          tgt._parse_received_doc_response,
                           '[\r\n{"new_generation": 0},'
-                          '\r\n{"error": "unavailable"}\r\n', None)
+                          '\r\n{"error": "unavailable"}\r\n')
 
         self.assertRaises(u1db.errors.Unavailable,
-                          tgt._parse_sync_stream,
-                          '[\r\n{"error": "unavailable"}\r\n', None)
+                          tgt._parse_received_doc_response,
+                          '[\r\n{"error": "unavailable"}\r\n')
 
         self.assertRaises(u1db.errors.BrokenSyncStream,
-                          tgt._parse_sync_stream,
-                          '[\r\n{"error": "?"}\r\n', None)
+                          tgt._parse_received_doc_response,
+                          '[\r\n{"error": "?"}\r\n')
 
 
 #
@@ -162,7 +167,7 @@ class TestSoledadParsingSyncStream(
 def make_local_db_and_soledad_target(test, path='test'):
     test.startServer()
     db = test.request_state._create_database(os.path.basename(path))
-    st = target.SoledadSyncTarget.connect(
+    st = target.SoledadHTTPSyncTarget.connect(
         test.getURL(path), crypto=test._soledad._crypto)
     return db, st
 
@@ -173,7 +178,7 @@ def make_local_db_and_token_soledad_target(test):
     return db, st
 
 
-class TestSoledadSyncTarget(
+class TestSoledadHTTPSyncTarget(
         TestWithScenarios,
         SoledadWithCouchServerMixin,
         test_remote_sync_target.TestRemoteSyncTargets):
@@ -532,7 +537,7 @@ class TestSoledadDbSync(
 
     def do_sync(self, target_name):
         """
-        Perform sync using SoledadSynchronizer, SoledadSyncTarget
+        Perform sync using SoledadSynchronizer, SoledadHTTPSyncTarget
         and Token auth.
         """
         if self.token:

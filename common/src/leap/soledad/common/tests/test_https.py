@@ -52,7 +52,7 @@ LEAP_SCENARIOS = [
 
 def token_leap_https_sync_target(test, host, path):
     _, port = test.server.server_address
-    st = client.target.SoledadSyncTarget(
+    st = client.http_target.SoledadHTTPSyncTarget(
         'https://%s:%d/%s' % (host, port, path),
         crypto=test._soledad._crypto)
     st.set_token_credentials('user-uuid', 'auth-token')

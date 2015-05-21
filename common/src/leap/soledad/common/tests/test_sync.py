@@ -27,7 +27,7 @@ from twisted.internet import defer
 from testscenarios import TestWithScenarios
 
 from leap.soledad.common import couch
-from leap.soledad.client import target
+from leap.soledad.client import http_target as target
 from leap.soledad.client import sync
 from leap.soledad.server import SoledadApp
 
@@ -193,7 +193,7 @@ class TestSoledadDbSync(
 
     def do_sync(self, target_name):
         """
-        Perform sync using SoledadSynchronizer, SoledadSyncTarget
+        Perform sync using SoledadSynchronizer, SoledadHTTPSyncTarget
         and Token auth.
         """
         extra = {}
@@ -204,7 +204,7 @@ class TestSoledadDbSync(
         target_url = self.getURL(target_name)
         return sync.SoledadSynchronizer(
             self.db,
-            target.SoledadSyncTarget(
+            target.SoledadHTTPSyncTarget(
                 target_url,
                 crypto=self._soledad._crypto,
                 **extra)).sync(autocreate=True,
