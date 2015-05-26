@@ -18,6 +18,7 @@ Test Leap backend bits: sync with deferred encryption/decryption.
 """
 import time
 import os
+from StringIO import StringIO
 import random
 import string
 import shutil
@@ -164,10 +165,10 @@ class TestSoledadDbSyncDeferredEncDecr(
             crypto = self._soledad._crypto
             replica_uid = self.db1._replica_uid
             dbsyncer = SQLCipherU1DBSync(self.opts, crypto, replica_uid,
-                defer_encryption=True)
+                    cert_file=None, defer_encryption=True)
             self.dbsyncer = dbsyncer
             return dbsyncer.sync(target_url, creds=creds,
-                autocreate=True,defer_decryption=DEFER_DECRYPTION)
+                                 defer_decryption=DEFER_DECRYPTION)
         else:
             return test_sync.TestDbSync.do_sync(self, target_name)
 
@@ -194,6 +195,13 @@ class TestSoledadDbSyncDeferredEncDecr(
         doc2 = self.db2.create_doc_from_json(tests.nested_doc)
         d = self.do_sync('test')
 
+        def _sync_errback(failure):
+            s = StringIO()
+            failure.printDetailedTraceback(file=s)
+            msg = "Soledad exception when syncing!\n" + s.getvalue()
+            self.fail(msg)
+            return failure
+
         def _assert_successful_sync(results):
             import time
             # need to give time to the encryption to proceed
@@ -214,7 +222,7 @@ class TestSoledadDbSyncDeferredEncDecr(
             self.assertGetEncryptedDoc(
                 self.db1, doc2.doc_id, doc2.rev, tests.nested_doc, False)
 
-        d.addCallback(_assert_successful_sync)
+        d.addCallbacks(_assert_successful_sync, _sync_errback)
         return d
 
     def test_db_sync_autocreate(self):

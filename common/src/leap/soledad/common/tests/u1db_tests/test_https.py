@@ -80,6 +80,9 @@ class TestHttpSyncTargetHttpsSupport(tests.TestCaseWithServer):
             soledad.client.api.old__VerifiedHTTPSConnection
         super(TestHttpSyncTargetHttpsSupport, self).setUp()
 
+    def tearDown(self):
+        super(TestHttpSyncTargetHttpsSupport, self).tearDown()
+
     def getSyncTarget(self, host, path=None):
         if self.server is None:
             self.startServer()

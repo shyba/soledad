@@ -20,8 +20,8 @@
 Test Leap backend bits: https
 """
 
-
 from u1db.remote import http_client
+from twisted.internet import defer
 
 from leap.soledad import client
 
@@ -50,12 +50,17 @@ LEAP_SCENARIOS = [
 # The following tests come from `u1db.tests.test_https`.
 #-----------------------------------------------------------------------------
 
+
 def token_leap_https_sync_target(test, host, path):
     _, port = test.server.server_address
-    st = client.target.SoledadSyncTarget(
-        'https://%s:%d/%s' % (host, port, path),
-        crypto=test._soledad._crypto)
-    st.set_token_credentials('user-uuid', 'auth-token')
+    creds = {'token': {'uuid': 'user-uuid', 'token': 'auth-token'}}
+    st = client.http_target.SoledadHTTPSyncTarget(
+            ('https://%s:%d/%s' % (host, port, path)),
+            source_replica_uid=test.source_replica_uid,
+            creds=creds,
+            cert_file=client.api.SOLEDAD_CERT,
+            crypto=test._soledad._crypto)
+    test.targets.append(st)
     return st
 
 
@@ -79,7 +84,15 @@ class TestSoledadSyncTargetHttpsSupport(
         # so here monkey patch again to test our functionality.
         http_client._VerifiedHTTPSConnection = client.api.VerifiedHTTPSConnection
         client.api.SOLEDAD_CERT = http_client.CA_CERTS
+        self.source_replica_uid = 'other-id'
+        self.targets = []
 
+    def tearDown(self):
+        for target in self.targets:
+            target._http._pool.closeCachedConnections()
+        targets = []
+
+    @defer.inlineCallbacks
     def test_working(self):
         """
         Test that SSL connections work well.
@@ -91,10 +104,11 @@ class TestSoledadSyncTargetHttpsSupport(
         db = self.request_state._create_database('test')
         self.patch(client.api, 'SOLEDAD_CERT', self.cacert_pem)
         remote_target = self.getSyncTarget('localhost', 'test')
-        remote_target.record_sync_info('other-id', 2, 'T-id')
+        yield remote_target.record_sync_info(self.source_replica_uid, 2, 'T-id')
         self.assertEqual(
-            (2, 'T-id'), db._get_replica_gen_and_trans_id('other-id'))
+            (2, 'T-id'), db._get_replica_gen_and_trans_id(self.source_replica_uid))
 
+    @defer.inlineCallbacks
     def test_host_mismatch(self):
         """
         Test that SSL connections to a hostname different than the one in the
@@ -107,6 +121,13 @@ class TestSoledadSyncTargetHttpsSupport(
         self.request_state._create_database('test')
         self.patch(client.api, 'SOLEDAD_CERT', self.cacert_pem)
         remote_target = self.getSyncTarget('127.0.0.1', 'test')
-        self.assertRaises(
-            http_client.CertificateError, remote_target.record_sync_info,
-            'other-id', 2, 'T-id')
+        d = remote_target.record_sync_info('other-id', 2, 'T-id')
+        def _check_expected_failure(failure):
+            self.assertRaises(
+                http_client.CertificateError, remote_target.record_sync_info,
+                'other-id', 2, 'T-id')
+        def _should_not_succeed(res):
+            print res
+            self.fail('Request with invalid certificate accepted')
+        d.addCallbacks(_should_not_succeed, _check_expected_failure)
+        yield d
