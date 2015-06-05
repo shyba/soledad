@@ -165,6 +165,7 @@ class MockedSharedDBTest(object):
             lock = Mock(return_value=('atoken', 300))
             unlock = Mock(return_value=True)
             open = Mock(return_value=None)
+            close = Mock(return_value=None)
             syncable = True
 
             def __call__(self):

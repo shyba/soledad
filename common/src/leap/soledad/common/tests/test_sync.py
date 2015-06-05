@@ -22,12 +22,13 @@ import threading
 import time
 
 from urlparse import urljoin
+from uuid import uuid4
 from twisted.internet import defer
 
 from testscenarios import TestWithScenarios
 
 from leap.soledad.common import couch
-from leap.soledad.client import target
+from leap.soledad.client import http_target
 from leap.soledad.client import sync
 from leap.soledad.server import SoledadApp
 
@@ -195,19 +196,19 @@ class TestSoledadDbSync(
         Perform sync using SoledadSynchronizer, SoledadSyncTarget
         and Token auth.
         """
-        extra = {}
-        extra = dict(creds={'token': {
+        creds={'token': {
             'uuid': 'user-uuid',
             'token': 'auth-token',
-        }})
+        }}
         target_url = self.getURL(target_name)
         return sync.SoledadSynchronizer(
             self.db,
-            target.SoledadSyncTarget(
+            http_target.SoledadHTTPSyncTarget(
                 target_url,
+                source_replica_uid=uuid4().hex,
+                creds=creds,
                 crypto=self._soledad._crypto,
-                **extra)).sync(autocreate=True,
-                               defer_decryption=False)
+                cert_file=None)).sync(defer_decryption=False)
 
     def test_db_sync(self):
         """

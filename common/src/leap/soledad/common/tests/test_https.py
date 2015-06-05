@@ -26,6 +26,7 @@ from twisted.internet import defer
 from leap.soledad import client
 
 from testscenarios import TestWithScenarios
+import leap.common.http
 
 from leap.soledad.common.tests.u1db_tests import test_backends
 from leap.soledad.common.tests.u1db_tests import test_https
@@ -88,9 +89,7 @@ class TestSoledadSyncTargetHttpsSupport(
         self.targets = []
 
     def tearDown(self):
-        for target in self.targets:
-            target._http._pool.closeCachedConnections()
-        targets = []
+        leap.common.http._pool.closeCachedConnections()
 
     @defer.inlineCallbacks
     def test_working(self):
@@ -129,5 +128,6 @@ class TestSoledadSyncTargetHttpsSupport(
         def _should_not_succeed(res):
             print res
             self.fail('Request with invalid certificate accepted')
-        d.addCallbacks(_should_not_succeed, _check_expected_failure)
+        d.addCallbacks(_should_not_succeed)
+        d.addErrback(_check_expected_failure)
         yield d
