@@ -3,3 +3,4 @@ scrypt
 zope.proxy
 twisted
 cryptography
+treq
