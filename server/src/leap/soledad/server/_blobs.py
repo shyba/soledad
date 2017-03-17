@@ -107,10 +107,7 @@ class FilesystemBlobsBackend(object):
                 request.responseHeaders.setRawHeaders('Tag', [tag])
 
     def read_blob(self, user, blob_id, request):
-        print "USER", user
-        print "BLOB_ID", blob_id
         path = self._get_path(user, blob_id)
-        print "READ FROM", path
         _file = static.File(path, defaultType='application/octet-stream')
         return _file.render_GET(request)
 
