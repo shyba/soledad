@@ -97,8 +97,9 @@ class IBlobsBackend(Interface):
 @implementer(IBlobsBackend)
 class FilesystemBlobsBackend(object):
 
-    path = '/tmp/blobs/'
-    quota = 200 * 1024  # in KB
+    def __init__(self, path='/tmp/blobs/', quota=200 * 1024):
+        self.quota = quota
+        self.path = path
 
     def tag_header(self, user, blob_id, request):
         with open(self._get_path(user, blob_id)) as doc_file:
