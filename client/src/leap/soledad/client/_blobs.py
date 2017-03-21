@@ -217,7 +217,7 @@ class BlobManager(object):
         logger.info("Staring download of blob: %s" % blob_id)
         # TODO this needs to be connected in a tube
         uri = self.remote + self.user + '/' + blob_id
-        data = yield treq.get(uri)
+        data = yield treq.get(uri, persistent=False)
 
         if data.code == 404:
             logger.warn("Blob not found in server: %s" % blob_id)
