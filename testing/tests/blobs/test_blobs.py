@@ -23,7 +23,6 @@ from leap.soledad.client._blobs import DecrypterBuffer, BlobManager
 from leap.soledad.client import _crypto
 from io import BytesIO
 from mock import Mock
-import mock
 
 
 class BlobTestCase(unittest.TestCase):
@@ -50,7 +49,6 @@ class BlobTestCase(unittest.TestCase):
         fd, size = buf.close()
         assert fd.getvalue() == 'rosa de foc'
 
-    @defer.inlineCallbacks
     def test_blob_manager_encrypted_upload(self):
 
         @defer.inlineCallbacks
@@ -63,9 +61,9 @@ class BlobTestCase(unittest.TestCase):
             assert decrypted.getvalue() == 'up and up'
             defer.returnValue(Mock(code=200))
 
-        manager = BlobManager('', '', self.secret, self.secret, 'user')
+        manager = BlobManager(
+            '', 'http://127.0.0.1/', self.secret, self.secret, 'user')
         doc_id, rev = self.doc_info.doc_id, self.doc_info.rev
         fd = BytesIO('up and up')
-        with mock.patch('leap.soledad.client._blobs.treq.put') as mock_treq:
-            mock_treq.side_effect = _check_result
-            yield manager._encrypt_and_upload('blob_id', doc_id, rev, fd)
+        manager._client.put = _check_result
+        return manager._encrypt_and_upload('blob_id', doc_id, rev, fd)

@@ -28,26 +28,28 @@ import commands
 import os
 import base64
 
+from twisted.logger import Logger
 from twisted.web import static
 from twisted.web import resource
 from twisted.web.client import FileBodyProducer
 from twisted.web.server import NOT_DONE_YET
 
 from zope.interface import Interface, implementer
-from leap.soledad.server._config import get_config
 
 
-__all__ = ['BlobsResource', 'blobs_resource']
+__all__ = ['BlobsResource']
+
+
+logger = Logger()
 
 
 # TODO some error handling needed
-# [ ] make path configurable
 # [ ] sanitize path
 
 # for the future:
 # [ ] isolate user avatar in a safer way
 # [ ] catch timeout in the server (and delete incomplete upload)
-# p [ chunking (should we do it on the client or on the server?)
+# [ ] chunking (should we do it on the client or on the server?)
 
 
 class BlobAlreadyExists(Exception):
@@ -97,9 +99,11 @@ class IBlobsBackend(Interface):
 @implementer(IBlobsBackend)
 class FilesystemBlobsBackend(object):
 
-    def __init__(self, path='/tmp/blobs/', quota=200 * 1024):
+    def __init__(self, blobs_path='/tmp/blobs/', quota=200 * 1024):
         self.quota = quota
-        self.path = path
+        if not os.path.isdir(blobs_path):
+            os.makedirs(blobs_path)
+        self.path = blobs_path
 
     def tag_header(self, user, blob_id, request):
         with open(self._get_path(user, blob_id)) as doc_file:
@@ -108,7 +112,9 @@ class FilesystemBlobsBackend(object):
                 request.responseHeaders.setRawHeaders('Tag', [tag])
 
     def read_blob(self, user, blob_id, request):
+        logger.info('reading blob: %s - %s' % (user, blob_id))
         path = self._get_path(user, blob_id)
+        logger.debug('blob path: %s' % path)
         _file = static.File(path, defaultType='application/octet-stream')
         return _file.render_GET(request)
 
@@ -123,12 +129,12 @@ class FilesystemBlobsBackend(object):
             raise BlobAlreadyExists()
         used = self.get_total_storage(user)
         if used > self.quota:
-            print "Error 507: Quota exceeded for user:", user
+            logger.error("Error 507: Quota exceeded for user: %s" % user)
             request.setResponseCode(507)
             request.write('Quota Exceeded!')
             request.finish()
             return NOT_DONE_YET
-        print "WRITE TO", path
+        logger.debug("writing blob: %s" % path)
         fbp = FileBodyProducer(request.content)
         d = fbp.startProducing(open(path, 'wb'))
         d.addCallback(lambda _: request.finish())
@@ -144,7 +150,8 @@ class FilesystemBlobsBackend(object):
         raise NotImplementedError
 
     def _get_disk_usage(self, start_path):
-        assert os.path.isdir(start_path)
+        if not os.path.isdir(start_path):
+            return 0
         cmd = 'du -c %s | tail -n 1' % start_path
         size = commands.getoutput(cmd).split()[0]
         return int(size)
@@ -171,7 +178,6 @@ class BlobsResource(resource.Resource):
         self._handler = kls()
         """
         resource.Resource.__init__(self)
-        self._blobs_path = blobs_path
         self._handler = self.blobsFactoryClass(blobs_path)
         assert IBlobsBackend.providedBy(self._handler)
 
@@ -179,31 +185,24 @@ class BlobsResource(resource.Resource):
     # under request.
 
     def render_GET(self, request):
-        print "GETTING", request.path
-        user, blob_id = self._split_path(request.path)
+        logger.info("http get: %s" % request.path)
+        user, blob_id = request.postpath
         self._handler.tag_header(user, blob_id, request)
         return self._handler.read_blob(user, blob_id, request)
 
     def render_PUT(self, request):
-        user, blob_id = self._split_path(request.path)
+        logger.info("http put: %s" % request.path)
+        user, blob_id = request.postpath
         return self._handler.write_blob(user, blob_id, request)
 
-    def _split_path(self, blob_id):
-        # FIXME catch errors here
-        parts = blob_id.split('/')
-        _, user, blobname = parts
-        return user, blobname
 
-
-# provide a configured instance of the resource
-_config = get_config()
-_path = _config['blobs_path']
-
-blobs_resource = BlobsResource(_path)
 if __name__ == '__main__':
     # A dummy blob server
     # curl -X PUT --data-binary @/tmp/book.pdf localhost:9000/user/someid
     # curl -X GET -o /dev/null localhost:9000/user/somerandomstring
+    from twisted.python import log
+    import sys
+    log.startLogging(sys.stdout)
 
     from twisted.web.server import Site
     from twisted.internet import reactor
@@ -212,12 +211,9 @@ if __name__ == '__main__':
     import argparse
 
     parser = argparse.ArgumentParser()
-    parser.add_argument('--port', default=9000)
+    parser.add_argument('--port', default=9000, type=int)
     parser.add_argument('--path', default='/tmp/blobs/user')
     args = parser.parse_args()
-
-    if not os.path.isdir(args.path):
-        os.makedirs(args.path)
 
     root = BlobsResource(args.path)
     # I picture somethink like
